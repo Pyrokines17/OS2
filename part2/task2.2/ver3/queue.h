@@ -11,6 +11,12 @@
 #include <sys/types.h>
 
 #define MAIN_ERROR -1
+#define UNLOCK_ERROR -2
+#define LOCK_ERROR -3
+#define QUEUE_ERROR -4
+#define COND_ERROR -5
+#define MUTEX_ERROR -6
+
 #define ENDLESS 1
 #define EMPTY 0
 
@@ -32,7 +38,7 @@ typedef struct _Queue {
 	int max_count;
 
 	// queue statistics
-
+	
 	long add_attempts;
 	long get_attempts;
 	long add_count;

@@ -1,0 +1,96 @@
+read-write(100):
+--------------------
+Counter: 60
+Swap iter: 148 593 224
+
+Increase iter: 4 980 923
+Increase count: 47
+
+Decrease iter: 4 953 126
+Decrease count: 45
+
+Equal iter: 5 076 252
+Equal count: 8
+--------------------
+read-write end
+
+mutex(100):
+--------------------
+Counter: 60
+Swap iter: 166 149 697
+
+Increase iter: 5 407 705
+Increase count: 43
+
+Decrease iter: 5 346 529
+Decrease count: 43
+
+Equal iter: 5 436 665
+Equal count: 13
+--------------------
+mutex end
+
+spinlock(100):
+--------------------
+Counter: 60
+Swap iter: 181 343 663
+
+Increase iter: 9 015 907
+Increase count: 44
+
+Decrease iter: 9 383 951
+Decrease count: 44
+
+Equal iter: 9 554 372
+Equal count: 10
+--------------------
+spinlock end
+
+read-write(1000):
+--------------------
+Counter: 60
+Swap iter: 155 272 158
+
+Increase iter: 793 504
+Increase count: 457
+
+Decrease iter: 754 398
+Decrease count: 447
+
+Equal iter: 780 883
+Equal count: 104
+--------------------
+read-write end
+
+mutex(1000):
+--------------------
+Counter: 60
+Swap iter: 170 053 388
+
+Increase iter: 759 618
+Increase count: 444
+
+Decrease iter: 735 155
+Decrease count: 464
+
+Equal iter: 792 309
+Equal count: 88
+--------------------
+mutex end
+
+spinlock(1000):
+--------------------
+Counter: 60
+Swap iter: 184 152 237
+
+Increase iter: 1 171 036
+Increase count: 440
+
+Decrease iter: 1 257 230
+Decrease count: 448
+
+Equal iter: 1 283 064
+Equal count: 108
+--------------------
+spinlock end
+

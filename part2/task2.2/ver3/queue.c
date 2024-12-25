@@ -5,7 +5,38 @@
 
 #include "queue.h"
 
-int flag = FALSE;
+int my_pthread_mutex_unlock(queue_t* q) {
+	int stat = pthread_mutex_unlock(&q->mutex);
+
+	if (stat != EXIT_SUCCESS) {
+		fprintf(stderr, "pthread_mutex_unlock() failed: %s\n", strerror(stat));
+		return UNLOCK_ERROR;
+	}
+
+	return EXIT_SUCCESS;
+}
+
+int my_pthread_mutex_destroy(queue_t* q) {
+	int err = pthread_mutex_destroy(&q->mutex);
+		
+	if (err != EXIT_SUCCESS) {
+		fprintf(stderr, "pthread_mutex_destroy() id 1 failed: %s\n", strerror(err));
+		return MUTEX_ERROR;
+	}
+
+	return EXIT_SUCCESS;
+}
+
+int my_pthread_cond_destroy(queue_t* q) {
+	int err = pthread_cond_destroy(&q->cond);
+
+	if (err != EXIT_SUCCESS) {
+		fprintf(stderr, "pthread_cond_destroy() failed: %s\n", strerror(err));
+		return COND_ERROR;
+	}
+
+	return EXIT_SUCCESS;
+}
 
 void* qmonitor(void *arg) {
 	queue_t *q = (queue_t *)arg;
@@ -34,6 +65,7 @@ queue_t* queue_init(int max_count) {
 
 	if (err != EXIT_SUCCESS) {
 		fprintf(stderr, "queue_init: pthread_mutex_init() failed: %s\n", strerror(err));
+		free(q);
 		return NULL;
 	}
 
@@ -41,6 +73,8 @@ queue_t* queue_init(int max_count) {
 
 	if (err != EXIT_SUCCESS) {
 		fprintf(stderr, "queue_init: pthread_cond_init() failed: %s\n", strerror(err));
+		my_pthread_mutex_destroy(q);
+		free(q);
 		return NULL;
 	}
 
@@ -56,6 +90,9 @@ queue_t* queue_init(int max_count) {
 
 	if (err != EXIT_SUCCESS) {
 		fprintf(stderr, "queue_init: pthread_create() failed: %s\n", strerror(err));
+		my_pthread_cond_destroy(q);
+		my_pthread_mutex_destroy(q);
+		free(q);
 		return NULL;
 	}
 
@@ -63,13 +100,21 @@ queue_t* queue_init(int max_count) {
 }
 
 int queue_destroy(queue_t *q) {
-	int stat, len;
+	int stat = pthread_mutex_lock(&q->mutex);
+
+	if (stat != EXIT_SUCCESS) {
+		fprintf(stderr, "queue_destroy: pthread_mutex_lock() failed: %s\n", strerror(stat));
+		return stat;
+	}
+
 	qnode_t *tmp;
+	int len;
 
 	stat = pthread_cancel(q->qmonitor_tid);
 
 	if (stat != EXIT_SUCCESS) {
 		fprintf(stderr, "queue_destroy: pthread_cancel() failed: %s\n", strerror(stat));
+		my_pthread_mutex_unlock(q);
 		return stat;
 	}
 
@@ -77,6 +122,7 @@ int queue_destroy(queue_t *q) {
 
 	if (stat != EXIT_SUCCESS) {
 		fprintf(stderr, "queue_destroy: pthread_join() failed: %s\n", strerror(stat));
+		my_pthread_mutex_unlock(q);
 		return stat;
 	}
 
@@ -92,6 +138,14 @@ int queue_destroy(queue_t *q) {
 
 	if (stat != EXIT_SUCCESS) {
 		fprintf(stderr, "queue_destroy: pthread_cond_destroy() failed: %s\n", strerror(stat));
+		my_pthread_mutex_unlock(q);
+		return stat;
+	}
+
+	stat = pthread_mutex_unlock(&q->mutex);
+
+	if (stat != EXIT_SUCCESS) {
+		fprintf(stderr, "queue_destroy: pthread_mutex_unlock() id 4 failed: %s\n", strerror(stat));
 		return stat;
 	}
 
@@ -108,18 +162,37 @@ int queue_destroy(queue_t *q) {
 }
 
 int queue_add(queue_t *q, int val) {
-	q->add_attempts++;
-
-	assert(q->count <= q->max_count);
-
-	if (q->count == q->max_count) {
-		return FALSE;
-	}
-
 	int stat = pthread_mutex_lock(&q->mutex);
 
 	if (stat != EXIT_SUCCESS) {
 		fprintf(stderr, "queue_add: pthread_mutex_lock() failed: %s\n", strerror(stat));
+		return LOCK_ERROR;
+	}
+
+	q->add_attempts++;
+
+	assert(q->count <= q->max_count);
+
+	while (q->count == q->max_count) {
+		stat = pthread_cond_wait(&q->cond, &q->mutex);
+
+		if (stat == EXIT_SUCCESS) {
+			continue;
+		}
+
+		fprintf(stderr, "queue_add: pthread_cond_wait() failed: %s\n", strerror(stat));
+		my_pthread_mutex_unlock(q);
+		
+		return COND_ERROR;
+	}
+
+	if (q->count == q->max_count) {
+		stat = my_pthread_mutex_unlock(q);
+		
+		if (stat != EXIT_SUCCESS) {
+			return stat;
+		}
+
 		return FALSE;
 	}
 
@@ -127,7 +200,8 @@ int queue_add(queue_t *q, int val) {
 	
 	if (new == NULL) {
 		fprintf(stderr, "Cannot allocate memory for new node\n");
-		return FALSE;
+		my_pthread_mutex_unlock(q);
+		return EXIT_FAILURE;
 	}
 
 	new->val = val;
@@ -143,62 +217,56 @@ int queue_add(queue_t *q, int val) {
 	q->count++;
 	q->add_count++;
 
-	flag = TRUE;
-
 	stat = pthread_cond_signal(&q->cond);
 
 	if (stat != EXIT_SUCCESS) {
 		fprintf(stderr, "queue_add: pthread_cond_signal() failed: %s\n", strerror(stat));
-
-		stat = pthread_mutex_unlock(&q->mutex);
-
-		if (stat != EXIT_SUCCESS) {
-			fprintf(stderr, "queue_add: pthread_mutex_unlock() failed: %s\n", strerror(stat));
-		}
-
-		return FALSE;
+		my_pthread_mutex_unlock(q);
+		return COND_ERROR;
 	}
 
 	stat = pthread_mutex_unlock(&q->mutex);
 
 	if (stat != EXIT_SUCCESS) {
-		fprintf(stderr, "queue_add: pthread_mutex_unlock() failed: %s\n", strerror(stat));
-		return FALSE;
+		fprintf(stderr, "queue_add: pthread_mutex_unlock() id 5 failed: %s\n", strerror(stat));
+		return UNLOCK_ERROR;
 	}
 
 	return TRUE;
 }
 
 int queue_get(queue_t *q, int *val) {
-	q->get_attempts++;
-
-	assert(q->count >= 0);
-
-	if (q->count == 0) {
-		return FALSE;
-	}
-
 	int stat = pthread_mutex_lock(&q->mutex);
 
 	if (stat != EXIT_SUCCESS) {
 		fprintf(stderr, "queue_get: pthread_mutex_lock() failed: %s\n", strerror(stat));
-		return FALSE;
+		return LOCK_ERROR;
 	}
 
-	while (flag == FALSE) {
+	q->get_attempts++;
+
+	assert(q->count >= 0);
+
+	while (q->count == 0) {
 		stat = pthread_cond_wait(&q->cond, &q->mutex);
 
-		if (stat != EXIT_SUCCESS) {
-			fprintf(stderr, "queue_get: pthread_cond_wait() failed: %s\n", strerror(stat));
-
-			stat = pthread_mutex_unlock(&q->mutex);
-
-			if (stat != EXIT_SUCCESS) {
-				fprintf(stderr, "queue_get: pthread_mutex_unlock() failed: %s\n", strerror(stat));
-			}
-
-			return FALSE;
+		if (stat == EXIT_SUCCESS) {
+			continue;
 		}
+
+		fprintf(stderr, "queue_get: pthread_cond_wait() failed: %s\n", strerror(stat));
+		my_pthread_mutex_unlock(q);
+		return COND_ERROR;
+	}
+
+	if (q->count == 0) {
+		stat = my_pthread_mutex_unlock(q);
+
+		if (stat != EXIT_SUCCESS) {
+			return stat;
+		}
+		
+		return FALSE;
 	}
 
 	qnode_t *tmp = q->first;
@@ -211,22 +279,41 @@ int queue_get(queue_t *q, int *val) {
 	q->count--;
 	q->get_count++;
 
-	flag = FALSE;
+	stat = pthread_cond_signal(&q->cond);
+
+	if (stat != EXIT_SUCCESS) {
+		fprintf(stderr, "queue_get: pthread_cond_signal() failed: %s\n", strerror(stat));
+		my_pthread_mutex_unlock(q);
+		return COND_ERROR;
+	}
 
 	stat = pthread_mutex_unlock(&q->mutex);
 
 	if (stat != EXIT_SUCCESS) {
-		fprintf(stderr, "queue_get: pthread_mutex_unlock() failed: %s\n", strerror(stat));
-		return FALSE;
+		fprintf(stderr, "queue_get: pthread_mutex_unlock() id 4 failed: %s\n", strerror(stat));
+		return UNLOCK_ERROR;
 	}
 
 	return TRUE;
 }
 
 void queue_print_stats(queue_t *q) {
+	int stat = pthread_mutex_lock(&q->mutex);
+
+	if (stat != EXIT_SUCCESS) {
+		fprintf(stderr, "queue_print_stats: pthread_mutex_lock() failed: %s\n", strerror(stat));
+		pthread_exit(NULL);
+	}
+
 	printf("queue stats: current size %d; attempts: (%ld %ld %ld); counts (%ld %ld %ld)\n",
 		q->count,
 		q->add_attempts, q->get_attempts, q->add_attempts - q->get_attempts,
 		q->add_count, q->get_count, q->add_count -q->get_count);
-}
 
+	stat = pthread_mutex_unlock(&q->mutex);
+
+	if (stat != EXIT_SUCCESS) {
+		fprintf(stderr, "queue_print_stats: pthread_mutex_unlock() failed: %s\n", strerror(stat));
+		pthread_exit(NULL);
+	}
+}
