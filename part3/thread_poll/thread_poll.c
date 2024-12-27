@@ -93,12 +93,12 @@ int get_item(qhead_t* qhead) {
     int ret = -1;
     qitem_t *item = NULL;
 
-    if (qhead->first != NULL && qhead->first == qhead->last) {
+    if ((qhead->first != NULL) && (qhead->first == qhead->last)) {
         item = qhead->first;
         ret = qhead->first->cli_socket;
         qhead->first = NULL;
         qhead->last = NULL;
-    } else if (qhead->first != NULL && qhead->first != qhead->last) {
+    } else if ((qhead->first != NULL) && (qhead->first != qhead->last)) {
         item = qhead->first;
         ret = qhead->first->cli_socket;
         qhead->first = qhead->first->next;
@@ -108,7 +108,7 @@ int get_item(qhead_t* qhead) {
 
     if (stat != EXIT_SUCCESS) {
         fprintf(stderr, "Error: pthread_mutex_unlock failed: %s\n", strerror(stat));
-        return stat;
+        return EXIT_FAILURE;
     }
 
     if (item != NULL) {
@@ -153,7 +153,7 @@ int add_item(qhead_t* qhead, int fd) {
 
     if (stat != EXIT_SUCCESS) {
         fprintf(stderr, "Error: pthread_mutex_unlock failed\n");
-        return stat;
+        return EXIT_FAILURE;
     }
     
     return EXIT_SUCCESS;
@@ -200,7 +200,7 @@ void thread_poll_destroy(thread_poll_t *tp) {
     if (tp->state == RUNNING) {
         int stat;
 
-        for (unsigned int i = 0; i < tp->nthreads; i++) {
+        for (unsigned int i = 0; i < tp->nthreads; ++i) {
             stat = pthread_join(tp->threads[i], NULL);
             
             if (stat != EXIT_SUCCESS) {
@@ -229,8 +229,8 @@ void thread_poll_start(thread_poll_t *tp, void *(*func)(void *), void *args, siz
     tp->state = RUNNING;
     int stat;
     
-    for (unsigned int i = 0; i < tp->nthreads; i++) {
-        stat = pthread_create(&tp->threads[i], NULL, func, args + i * args_size);
+    for (unsigned int i = 0; i < tp->nthreads; ++i) {
+        stat = pthread_create(&(tp->threads[i]), NULL, func, args + i * args_size);
         
         if (stat != EXIT_SUCCESS) {
             fprintf(stderr, "Error: pthread_create failed: %s\n", strerror(stat));

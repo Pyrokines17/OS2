@@ -140,11 +140,11 @@ resource_t *find_resource(cache_t *cache, char *url) {
         return NULL;
     }
 
-    if (resource->state == DONE && time(NULL) - resource->load >= cache->cache_ttl) {
+    if ((resource->state == DONE) && (time(NULL) - resource->load >= cache->cache_ttl)) {
         safe_rwlock_unlock(&cache->rwlock);
         delete_resource(cache, resource);
         return NULL;
-    } else if (resource->state == DONE && time(NULL) - resource->load < cache->cache_ttl) {
+    } else if ((resource->state == DONE) && (time(NULL) - resource->load < cache->cache_ttl)) {
         new_resource = (resource_t*)malloc(sizeof(resource_t));
 
         if (new_resource == NULL) {
@@ -253,7 +253,7 @@ void clear_cache(cache_t *cache) {
     resource_t *resource;
 
     while (hashmap_iter(cache->cache_map, &i, (void**)&resource)) {
-        if ((time(NULL) - resource->load) >= cache->cache_ttl && resource->data_position != -1) {
+        if ((time(NULL) - resource->load >= cache->cache_ttl) && (resource->data_position != -1)) {
             _delete_resource(cache, resource);
         }
     }
@@ -275,7 +275,7 @@ void put_resource(cache_t *cache, resource_t *resource) {
     if (resource->size <= cache->remaining) {
         printf("Can put resource %s in cache\n", resource->url);
         put(cache, resource);
-    } else if (resource->size > cache->remaining && resource->size < cache->max_size) {
+    } else if ((resource->size > cache->remaining) && (resource->size < cache->max_size)) {
         errno = EXIT_SUCCESS;
 
         cache->cache_page = (char*)realloc(cache->cache_page, cache->max_size * sizeof(char));
@@ -285,6 +285,14 @@ void put_resource(cache_t *cache, resource_t *resource) {
         printf("Cache resized:\n\tcurrent_size: %d\n\tremaining: %d\n", cache->current_size, cache->remaining);
 
         while (cache->remaining < resource->size) {
+            clear_cache(cache);
+        }
+
+        put(cache, resource);
+    } else {
+        printf("clear cache that pur resource, remainig %d, size %d\n", cache->remaining, resource->size);
+
+        while (cache->remaining < resource->size){
             clear_cache(cache);
         }
 
@@ -340,7 +348,7 @@ void set_resource_in_progress(cache_t *cache, char *url) {
 
     resource_t *resource = find_resource(cache, url);
 
-    if (resource != NULL && resource->state == DONE) {
+    if ((resource != NULL) && (resource->state == DONE)) {
         delete_resource(cache, &(resource_t){.url = url});
     }
     

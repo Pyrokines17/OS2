@@ -84,7 +84,7 @@ int send_message(char* buf, unsigned int len, int sock_fd) {
     while (sent < len) {
         n = send(sock_fd, (const void*)&buf[sent], (len - sent) * sizeof(char), MSG_NOSIGNAL);
 
-        if (n <= 0 && errno != SUCCESS) {
+        if ((n <= 0) && (errno != SUCCESS)) {
             fprintf(stderr, "Error: send failed: %s\n", strerror(errno));
             return CLOSE_CONNECTION;
         }
@@ -122,6 +122,7 @@ int connect_to_server(char* host) {
 
     if (stat == FAILURE) {
         fprintf(stderr, "Error: connect failed: %s\n", strerror(errno));
+        safe_close1(sock_fd);
         return FAILURE;
     }
 

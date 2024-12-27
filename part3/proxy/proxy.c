@@ -112,10 +112,10 @@ proxy_t* proxy_create() {
 void proxy_destroy(proxy_t* proxy) {
     thread_poll_destroy(proxy->thread_poll);
     printf("Thread poll destroyed\n");
-    cache_destroy(proxy->cache);
-    printf("Cache destroyed\n");
     safe_close(proxy->server_socket);
     printf("Server socket closed\n");
+    cache_destroy(proxy->cache);
+    printf("Cache destroyed\n");
     free(proxy);
     printf("Proxy destroyed\n");
 }
@@ -137,8 +137,8 @@ int check_get(char* buf, size_t* cur_len) {
 }
 
 char* find_locations(http_message_t* message) {
-    for (int i = 0; i < message->headers_count; i++) {
-        if (message->headers[i].name != NULL && strstr(message->headers[i].name, "ocation") != NULL) {
+    for (int i = 0; i < message->headers_count; ++i) {
+        if ((message->headers[i].name != NULL) && (strstr(message->headers[i].name, "ocation") != NULL)) {
             return message->headers[i].value;
         }
     }
@@ -147,7 +147,7 @@ char* find_locations(http_message_t* message) {
 }
 
 int get_content_length(http_message_t* message) {
-    for (int i = 0; i < message->headers_count; i++) {
+    for (int i = 0; i < message->headers_count; ++i) {
         if (strcmp(message->headers[i].name, "Content-Length") == 0) {
             int len = atoi(message->headers[i].value);
             if (len > 0) {
@@ -175,22 +175,30 @@ char* mesh_transfer_data(
 
         int no_deleted = TRUE;
         int answer = send_message(buf, *curr_len, client_sock);
+        int stat;
 
         while (continue_work == TRUE) {
             read_bytes = recv(server_sock, message->buf, BUFFER_SIZE * sizeof(char), MSG_NOSIGNAL);
 
-            if (read_bytes <= 0 && errno == EINPROGRESS) {
-                send_message(bad_timeout, strlen(bad_timeout), client_sock);
+            if ((read_bytes <= 0) && (errno == EINPROGRESS)) {
+                stat = send_message(bad_timeout, strlen(bad_timeout), client_sock);
+                if (stat != EXIT_SUCCESS) {
+                    fprintf(stderr, "Failed to send message in mesh_tranfer_data\n");
+                }
                 break;
-            } else if (read_bytes <= 0 || errno != EXIT_SUCCESS) {
+            } else if ((read_bytes <= 0) || (errno != EXIT_SUCCESS)) {
                 break;
             }
 
             if (answer == EXIT_SUCCESS) {
                 answer = send_message(message->buf, read_bytes, client_sock);
+
+                if (answer != EXIT_SUCCESS) {
+                    fprintf(stderr, "Failed to send message in mesh_transfer_data\n");
+                }
             }
 
-            if (buf != NULL && *buf_size + read_bytes < cache->max_size) {
+            if ((buf != NULL) && (*buf_size + read_bytes < cache->max_size)) {
                 if (*curr_len + read_bytes >= *buf_size) {
                     buf = (char*)realloc(buf, sizeof(char) * (*buf_size + BUFFER_SIZE));
 
@@ -229,10 +237,13 @@ void streaming_transfer_data(char* buf, unsigned int buf_size, int server_sock, 
 
         read_bytes = recv(server_sock, buf, buf_size, MSG_NOSIGNAL);
 
-        if (read_bytes <= 0 && errno == EINPROGRESS) {
-            send_message(bad_timeout, strlen(bad_timeout), client_sock);
+        if ((read_bytes <= 0) && (errno == EINPROGRESS)) {
+            stat = send_message(bad_timeout, strlen(bad_timeout), client_sock);
+            if (stat != EXIT_SUCCESS) {
+                fprintf(stderr, "Failed to send message in streaming_transfer_data\n");
+            }
             break;
-        } else if (read_bytes <= 0 && errno != EINPROGRESS) {
+        } else if ((read_bytes <= 0) && (errno != EINPROGRESS)) {
             break;
         }
     }
@@ -265,13 +276,16 @@ int caching_transfer_data(char* data, int data_size, int cur_len, int server_soc
     int wait_amount = min(BUFFER_SIZE, data_size - cur_len);
     int answer = EXIT_SUCCESS;
 
-    while (continue_work == TRUE && data_size > cur_len) {
+    while (continue_work == TRUE && (data_size > cur_len)) {
         read_bytes = recv(server_socket, &data[cur_len], wait_amount, MSG_NOSIGNAL);
 
-        if (read_bytes <= 0 && errno == EINPROGRESS) {
-            send_message(bad_timeout, strlen(bad_timeout), client_socket);
+        if ((read_bytes <= 0) && (errno == EINPROGRESS)) {
+            stat = send_message(bad_timeout, strlen(bad_timeout), client_socket);
+            if (stat != EXIT_SUCCESS) {
+                fprintf(stderr, "Failed to send message in caching_transfer_data\n");
+            }
             return EXIT_FAILURE;
-        } else if (read_bytes <= 0 && errno != EINPROGRESS) {
+        } else if ((read_bytes <= 0) && (errno != EINPROGRESS)) {
             return EXIT_FAILURE;
         }
 
@@ -300,10 +314,10 @@ char* read_header(int server_socket, int* header_end, int* curr_len) {
 
     errno = EXIT_SUCCESS;
 
-    while(strstr(buf, "\r\n\r\n") == NULL && *curr_len < BUFFER_SIZE) {
+    while((strstr(buf, "\r\n\r\n") == NULL) && (*curr_len < BUFFER_SIZE)) {
         read_bytes = recv(server_socket, &buf[*curr_len], BUFFER_SIZE - *curr_len, MSG_NOSIGNAL);
 
-        if (read_bytes <= 0 && errno != EXIT_SUCCESS) {
+        if ((read_bytes <= 0) && (errno != EXIT_SUCCESS)) {
             free(buf);
             buf = NULL;
             *curr_len = 0;
@@ -313,9 +327,9 @@ char* read_header(int server_socket, int* header_end, int* curr_len) {
         *curr_len += read_bytes;
     } 
     
-    if (buf != NULL && strstr(buf, "\r\n\r\n") != NULL) {
+    if ((buf != NULL) && (strstr(buf, "\r\n\r\n") != NULL)) {
         *header_end = (int)(strstr(buf, "\r\n\r\n") - buf) + 4;
-    } else if (buf != NULL && strstr(buf, "\r\n\r\n") == NULL) {
+    } else if ((buf != NULL) && (strstr(buf, "\r\n\r\n") == NULL)) {
         free(buf);
         buf = NULL;
         *curr_len = 0;
@@ -354,20 +368,23 @@ char* read_response(
 
         printf("Get response on URL %s with status %d\n", url, message->status);
 
-        if (message->status == READY && is_succeess(message->status)) {
+        if ((message->status == READY) && is_succeess(message->status)) {
             content_len = get_content_length(message);
-        } else if (message->status == READY && is_redirect(message->status)) {
+        } else if ((message->status == READY) && is_redirect(message->status)) {
             *answer = REDIRECT;
             free(header);
             return NULL;
         } else if (message->status == READY) {
-            send_message(header, buf_len, client_socket);
+            int stat = send_message(header, buf_len, client_socket);
+            if (stat != EXIT_SUCCESS) {
+                fprintf(stderr, "Failed to send message in read_response\n");
+            }
             *answer = FAILURE;
             free(header);
             return NULL;
         }
 
-        if (content_len != FAILURE && content_len + header_len <= max_size && message->status != 206) {
+        if ((content_len != FAILURE) && (content_len + header_len <= max_size) && (message->status != 206)) {
             header = realloc(header, sizeof(char) * (content_len + header_len));
             printf("Resource %s start in caching\n", url);
 
@@ -379,7 +396,7 @@ char* read_response(
             } else if (*answer == FAILURE) {
                 fprintf(stderr, "Failed to cache resource\n");
             }
-        } else if (content_len == FAILURE && message->status != 206) {
+        } else if ((content_len == FAILURE) && (message->status != 206)) {
             printf("Resource %s start in meshing\n", url);
             header_len = BUFFER_SIZE;
             header = mesh_transfer_data(header, &header_len, &buf_len, message, server_socket, client_socket, url, cache);
@@ -472,8 +489,11 @@ int get_response(
         if (answer == REDIRECT) {
             char* new_url = find_locations(message);
 
-            if (new_url == NULL || strstr(new_url, "https") != NULL) {
+            if ((new_url == NULL) || (strstr(new_url, "https") != NULL)) {
                 answer = send_message(bad_gateway, strlen(bad_gateway), client_socket);
+                if (answer != EXIT_SUCCESS) {
+                    fprintf(stderr, "Failed to send message in get_response\n");
+                }
                 delete_resource(cache, &(resource_t){.url = url});
                 safe_close(server_socket);
                 return answer;
@@ -487,7 +507,7 @@ int get_response(
             if (stat != EXIT_SUCCESS) {
                 delete_resource(cache, &(resource_t){.url = url});
                 safe_close(server_socket);
-                fprintf(stderr, "Failed to send message\n");
+                fprintf(stderr, "Failed to send message? close connection\n");
                 return CLOSE_CONNECTION;
             }
 
@@ -503,7 +523,7 @@ int get_response(
             fprintf(stderr, "Failed to close socket\n");
         }
 
-        if (answer > 0 && buf != NULL) {
+        if ((answer > 0) && (buf != NULL)) {
             resource_t resource;
             resource.url = url;
             resource.data = buf;
@@ -547,14 +567,14 @@ resource_t* wait_response(cache_t* cache, char* url) {
 
     printf("Waiting for response on URL %s\n", url);
 
-    while (resource == NULL || (resource != NULL && resource->state == IN_PROGRESS)) {
+    while ((resource == NULL) || ((resource != NULL) && (resource->state == IN_PROGRESS))) {
         if (resource != NULL) {
             free(resource);
         }
 
         stat = pthread_cond_timedwait(&cache->cond, &cache->mutex, &timeout);
 
-        if (stat != EXIT_SUCCESS && stat != ETIMEDOUT) {
+        if ((stat != EXIT_SUCCESS) && (stat != ETIMEDOUT)) {
             fprintf(stderr, "Failed to wait for condition: %s\n", strerror(stat));
             break;
         }
@@ -604,13 +624,16 @@ int handle_client_message (
         if (message->method == HTTP_GET) {
             resource_t* resource = find_resource(cache, message->url);
 
-            if (resource != NULL && resource->state == READY) {
+            if ((resource != NULL) && (resource->state == READY)) {
                 printf("Resource %s found in cache\n", message->url);
                 answer = send_message(resource->data, resource->size, socket);
+                if (answer != EXIT_SUCCESS) {
+                    fprintf(stderr, "Failed to send message in handle_client_message\n");
+                }
                 free(resource->data);
                 free(resource);
             } else {
-                if (resource != NULL && resource->state == IN_PROGRESS) {
+                if ((resource != NULL) && (resource->state == IN_PROGRESS)) {
                     printf("Resource %s is in progress\n", message->url);
                     free(resource);
                     return IN_PROGRESS;
@@ -618,7 +641,7 @@ int handle_client_message (
 
                 printf("Resource %s not found in cache\n", message->url);
 
-                for (int i = 0; i < message->headers_count; i++) {
+                for (int i = 0; i < message->headers_count; ++i) {
                     res = strstr(message->headers[i].name, "Host");
 
                     if (res != NULL) {
@@ -659,7 +682,7 @@ int read_message(
         while (answer == FAILURE) {
             int readb = recv(socket, &buf[curr_len], BUFFER_SIZE, 0);
 
-            if (readb < 0 && errno != EXIT_SUCCESS) {
+            if ((readb < 0) && (errno != EXIT_SUCCESS)) {
                 return CLOSE_CONNECTION;
             } else if (readb <= 0) {
                 break;
@@ -671,8 +694,11 @@ int read_message(
             if (answer == IN_PROGRESS) {
                 resource_t* resource = wait_response(cache, message->url);
 
-                if (resource != NULL && resource->state == READY) {
-                    send_message(resource->data, resource->size, socket);
+                if ((resource != NULL) && (resource->state == READY)) {
+                    int stat = send_message(resource->data, resource->size, socket);
+                    if (stat != EXIT_SUCCESS) {
+                        fprintf(stderr, "Failed to send message in read_message\n");
+                    }
                     break;
                 }
 
@@ -688,13 +714,13 @@ int read_message(
 }
 
 void init_events(short* mask) {
-    for (int i = 0; i < AMOUNT_EVENTS; i++) {
+    for (int i = 0; i < AMOUNT_EVENTS; ++i) {
         mask[i] = 0;
     }
 }
 
 int find_free_event(short* mask) {
-    for (int i = 0; i < AMOUNT_EVENTS; i++) {
+    for (int i = 0; i < AMOUNT_EVENTS; ++i) {
         if (mask[i] == FREE) {
             return i;
         }
@@ -704,7 +730,7 @@ int find_free_event(short* mask) {
 }
 
 void set_free(int sock_fd, short* mask) {
-    for (int i = 0; i < AMOUNT_EVENTS; i++) {
+    for (int i = 0; i < AMOUNT_EVENTS; ++i) {
         if (mask[i] == sock_fd) {
             mask[i] = FREE;
             break;
@@ -812,6 +838,11 @@ void proxy_start(proxy_t* proxy) {
     int stat;
 
     thread_args_t* args = (thread_args_t*)malloc(sizeof(thread_args_t) * proxy->thread_poll->nthreads);
+
+    if (args == NULL) {
+        fprintf(stderr, "Failed to allocate memory for thread args\n");
+        return;
+    }
 
     for (int i = 0; i < proxy->thread_poll->nthreads; ++i) {
         args[i].proxy = proxy;
