@@ -6,6 +6,7 @@
 #define IN_PROGRESS 4
 #define DELETE -1
 
+//структура ресурса, который в кэше
 typedef struct resource_t {
     char *url;
     unsigned int size;
@@ -15,6 +16,7 @@ typedef struct resource_t {
     int state;
 } resource_t;
 
+//структура кэша, с хэш-таблицей из ресурсов
 typedef struct cache_t {
     unsigned int cache_ttl;
     unsigned int current_size;

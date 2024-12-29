@@ -40,6 +40,7 @@ char* bad_timeout = "HTTP/1.1 504 Gateway Timeout\r\n"
                     "</body>\n"
                     "</html>\n";
 
+//структура аргументов для потока
 typedef struct thread_args_t {
     proxy_t* proxy;
     int epoll_fd;
@@ -49,6 +50,7 @@ int continue_work = TRUE;
 
 void* handle_client(void* arg);
 
+//безопасное закрытие сокета
 int safe_close(int fd) {
     int stat = close(fd);
 
@@ -59,6 +61,7 @@ int safe_close(int fd) {
     return stat;
 }
 
+//безопасное открытие mutex
 int safe_mutex_unlock(pthread_mutex_t* mutex) {
     int stat = pthread_mutex_unlock(mutex);
 
@@ -69,6 +72,7 @@ int safe_mutex_unlock(pthread_mutex_t* mutex) {
     return stat;
 }
 
+//создание прокси сервера
 proxy_t* proxy_create() {
     proxy_t* proxy = (proxy_t*)malloc(sizeof(proxy_t));
     
@@ -109,6 +113,7 @@ proxy_t* proxy_create() {
     return proxy;
 }
 
+//уничтожение прокси сервера
 void proxy_destroy(proxy_t* proxy) {
     thread_poll_destroy(proxy->thread_poll);
     printf("Thread poll destroyed\n");
@@ -120,6 +125,7 @@ void proxy_destroy(proxy_t* proxy) {
     printf("Proxy destroyed\n");
 }
 
+//проверка наличия GET запроса
 int check_get(char* buf, size_t* cur_len) {
     char* get = strstr(buf, "GET");
     int pos = (int)(get - buf);
@@ -136,6 +142,7 @@ int check_get(char* buf, size_t* cur_len) {
     return FALSE;
 }
 
+//поиск значения заголовка Location
 char* find_locations(http_message_t* message) {
     for (int i = 0; i < message->headers_count; ++i) {
         if ((message->headers[i].name != NULL) && (strstr(message->headers[i].name, "ocation") != NULL)) {
@@ -146,9 +153,10 @@ char* find_locations(http_message_t* message) {
     return NULL;
 }
 
+//получение длины контента
 int get_content_length(http_message_t* message) {
     for (int i = 0; i < message->headers_count; ++i) {
-        if (strcmp(message->headers[i].name, "Content-Length") == 0) {
+        if (strcmp(message->headers[i].name, "Content-Length") == EXIT_SUCCESS) {
             int len = atoi(message->headers[i].value);
             if (len > 0) {
                 return len;
@@ -160,6 +168,7 @@ int get_content_length(http_message_t* message) {
     return -1;
 }
 
+//передача данных с сохранением (не зная длину)
 char* mesh_transfer_data(
     char* buf, 
     int* buf_size, 
@@ -200,7 +209,7 @@ char* mesh_transfer_data(
 
             if ((buf != NULL) && (*buf_size + read_bytes < cache->max_size)) {
                 if (*curr_len + read_bytes >= *buf_size) {
-                    buf = (char*)realloc(buf, sizeof(char) * (*buf_size + BUFFER_SIZE));
+                    buf = (char*)realloc(buf, *buf_size + BUFFER_SIZE);
 
                     if (buf == NULL) {
                         continue;
@@ -222,6 +231,7 @@ char* mesh_transfer_data(
         return buf;
 }
 
+//передача данных без сохранения
 void streaming_transfer_data(char* buf, unsigned int buf_size, int server_sock, int client_sock) {
     int read_bytes = buf_size;
     int stat;
@@ -249,23 +259,27 @@ void streaming_transfer_data(char* buf, unsigned int buf_size, int server_sock, 
     }
 }
 
+//минимум из двух чисел
 size_t min(size_t a, size_t b) {
     return a < b ? a : b;
 }
 
+//проверка на успешность запроса
 int is_succeess(int status) {
     return status >= 200 && status < 300;
 }
 
+//проверка на редирект
 int is_redirect(int status) {
     return status >= 300 && status < 400;
 }
 
+//передача данных с сохранением (зная длину)
 int caching_transfer_data(char* data, int data_size, int cur_len, int server_socket, int client_socket) {
     int stat = send_message(data, cur_len, client_socket);
 
     if (stat == CLOSE_CONNECTION) {
-        fprintf(stderr, "Error: send failed\n");
+        fprintf(stderr, "Error: send failed, close connection\n");
         return EXIT_FAILURE;
     }
 
@@ -276,7 +290,7 @@ int caching_transfer_data(char* data, int data_size, int cur_len, int server_soc
     int wait_amount = min(BUFFER_SIZE, data_size - cur_len);
     int answer = EXIT_SUCCESS;
 
-    while (continue_work == TRUE && (data_size > cur_len)) {
+    while ((continue_work == TRUE) && (data_size > cur_len)) {
         read_bytes = recv(server_socket, &data[cur_len], wait_amount, MSG_NOSIGNAL);
 
         if ((read_bytes <= 0) && (errno == EINPROGRESS)) {
@@ -300,6 +314,7 @@ int caching_transfer_data(char* data, int data_size, int cur_len, int server_soc
     return EXIT_SUCCESS;
 }
 
+//чтение заголовка
 char* read_header(int server_socket, int* header_end, int* curr_len) {
     char* buf = (char*)malloc(sizeof(char) * BUFFER_SIZE);
     
@@ -315,7 +330,7 @@ char* read_header(int server_socket, int* header_end, int* curr_len) {
     errno = EXIT_SUCCESS;
 
     while((strstr(buf, "\r\n\r\n") == NULL) && (*curr_len < BUFFER_SIZE)) {
-        read_bytes = recv(server_socket, &buf[*curr_len], BUFFER_SIZE - *curr_len, MSG_NOSIGNAL);
+        read_bytes = recv(server_socket, &buf[*curr_len], (BUFFER_SIZE - *curr_len) * sizeof(char), MSG_NOSIGNAL);
 
         if ((read_bytes <= 0) && (errno != EXIT_SUCCESS)) {
             free(buf);
@@ -338,6 +353,7 @@ char* read_header(int server_socket, int* header_end, int* curr_len) {
     return buf;
 }
 
+//получение ответа (сперва чтение заголовка, а после один из вариантов проксирования)
 char* read_response(
     http_message_t* message,
     http_parser* parser,
@@ -384,8 +400,8 @@ char* read_response(
             return NULL;
         }
 
-        if ((content_len != FAILURE) && (content_len + header_len <= max_size) && (message->status != 206)) {
-            header = realloc(header, sizeof(char) * (content_len + header_len));
+        if ((content_len != FAILURE) && (content_len + header_len <= max_size)) {
+            header = realloc(header, content_len + header_len);
             printf("Resource %s start in caching\n", url);
 
             *answer = caching_transfer_data(header, content_len + header_len, buf_len, server_socket, client_socket);
@@ -396,7 +412,7 @@ char* read_response(
             } else if (*answer == FAILURE) {
                 fprintf(stderr, "Failed to cache resource\n");
             }
-        } else if ((content_len == FAILURE) && (message->status != 206)) {
+        } else if (content_len == FAILURE) {
             printf("Resource %s start in meshing\n", url);
             header_len = BUFFER_SIZE;
             header = mesh_transfer_data(header, &header_len, &buf_len, message, server_socket, client_socket, url, cache);
@@ -416,29 +432,31 @@ char* read_response(
             printf("Resource %s streamed\n", url);
             free(header);
             header = NULL;
-            *answer = SUCCESS;
+            *answer = FAILURE;
         }
 
         return header;
 }
 
+//замена url
 char* change_url(char* get_message, char* old_url, char* new_url) {
     int start = (int)(strstr(get_message, old_url) - get_message);
-    char* new_gm = (char*)malloc(strlen(get_message) + strlen(new_url) - strlen(old_url) + 1);
+    char* new_gm = (char*)malloc(sizeof(char) * (strlen(get_message) + strlen(new_url) - strlen(old_url) + 1));
 
     if (new_gm == NULL) {
         fprintf(stderr, "Failed to allocate memory for new get message\n");
         return NULL;
     }
 
-    memcpy(new_gm, get_message, start);
-    memcpy(&new_gm[start], new_url, strlen(new_url));
+    memcpy(new_gm, get_message, start * sizeof(char));
+    memcpy(&new_gm[start], new_url, strlen(new_url) * sizeof(char));
     memcpy(&new_gm[start + strlen(new_url)], &get_message[start + strlen(old_url)], strlen(get_message) - start - strlen(old_url));
     new_gm[strlen(get_message) + strlen(new_url) - strlen(old_url)] = '\0';
     free(get_message);
     return new_gm;
 }
 
+//запрос ответа
 int get_response(
     int client_socket,
     http_parser* parser,
@@ -452,7 +470,10 @@ int get_response(
         int server_socket = connect_to_server(host);
 
         if (server_socket == FAILURE) {
-            send_message(bad_gateway, strlen(bad_gateway), client_socket);
+            int stat = send_message(bad_gateway, strlen(bad_gateway), client_socket);
+            if (stat != EXIT_SUCCESS) {
+                fprintf(stderr, "Failed to send message in get_response\n");
+            }
             fprintf(stderr, "Failed to connect to server\n");
             return FAILURE;
         }
@@ -475,8 +496,8 @@ int get_response(
         if (stat != EXIT_SUCCESS) {
             delete_resource(cache, &(resource_t){.url = url});
             safe_close(server_socket);
-            fprintf(stderr, "Failed to send message\n");
-            return FAILURE;
+            fprintf(stderr, "Failed to send message, close connection with %s\n", host);
+            return CLOSE_CONNECTION;
         }
 
         int answer;
@@ -507,14 +528,14 @@ int get_response(
             if (stat != EXIT_SUCCESS) {
                 delete_resource(cache, &(resource_t){.url = url});
                 safe_close(server_socket);
-                fprintf(stderr, "Failed to send message? close connection\n");
+                fprintf(stderr, "Failed to send message, close connection with %s\n", host);
                 return CLOSE_CONNECTION;
             }
 
             init_http_parser(parser, settings);
             refresh_http_message(message);
 
-            buf = read_response(message, parser, settings, cache, cache->max_size, server_socket, client_socket, &answer, new_url);
+            buf = read_response(message, parser, settings, cache, cache->max_size, server_socket, client_socket, &answer, url);
         }
 
         stat = close(server_socket);
@@ -550,6 +571,7 @@ int get_response(
         }
 }
 
+//ожидание ответа
 resource_t* wait_response(cache_t* cache, char* url) {
     resource_t* resource = find_resource(cache, url);
 
@@ -593,6 +615,7 @@ resource_t* wait_response(cache_t* cache, char* url) {
     return resource;
 }
 
+//обработка сообщения (либо читаем из кэша, либо запршиваем)
 int handle_client_message (
     http_parser* parser,
     http_parser_settings* settings,
@@ -606,9 +629,9 @@ int handle_client_message (
             return SUCCESS;
         }
 
-        size_t nparsed = http_parser_execute(parser, settings, (const char*)message->buf, *message->len);
+        size_t nparsed = http_parser_execute(parser, settings, (const char*)message->buf, *(message->len));
 
-        if (nparsed != *message->len) {
+        if (nparsed != *(message->len)) {
             init_http_parser(parser, settings);
             return FAILURE;
         }
@@ -641,19 +664,19 @@ int handle_client_message (
 
                 printf("Resource %s not found in cache\n", message->url);
 
-                for (int i = 0; i < message->headers_count; ++i) {
+                for (int i = 0; i < message->headers_count; i++) {
                     res = strstr(message->headers[i].name, "Host");
 
                     if (res != NULL) {
-                        char* get_message = (char*)malloc(*message->len + 1);
-                        memcpy(get_message, message->buf, *message->len);
-                        get_message[*message->len] = '\0';
+                        char* get_message = (char*)malloc(*(message->len) + 1);
+                        memcpy(get_message, message->buf, *(message->len));
+                        get_message[*(message->len)] = '\0';
 
                         char* url = message->url;
                         message->url = NULL;
 
                         set_resource_in_progress(cache, url);
-                        answer = get_response(socket, parser, settings, message, cache, message->headers[i].value, url, &get_message, *message->len);
+                        answer = get_response(socket, parser, settings, message, cache, message->headers[i].value, url, &get_message, *(message->len));
                         free(get_message);
                         break;
                     }
@@ -665,6 +688,7 @@ int handle_client_message (
         return answer;
     }
 
+//первичное получение байтов 
 int read_message(
     int socket,
     char* buf,
@@ -713,12 +737,14 @@ int read_message(
         return SUCCESS;
 }
 
+//инициализация событий
 void init_events(short* mask) {
     for (int i = 0; i < AMOUNT_EVENTS; ++i) {
-        mask[i] = 0;
+        mask[i] = FREE;
     }
 }
 
+//поиск свободного события
 int find_free_event(short* mask) {
     for (int i = 0; i < AMOUNT_EVENTS; ++i) {
         if (mask[i] == FREE) {
@@ -729,6 +755,7 @@ int find_free_event(short* mask) {
     return FAILURE;
 }
 
+//очистка события
 void set_free(int sock_fd, short* mask) {
     for (int i = 0; i < AMOUNT_EVENTS; ++i) {
         if (mask[i] == sock_fd) {
@@ -738,10 +765,12 @@ void set_free(int sock_fd, short* mask) {
     }
 }
 
+//завершение работы
 void exit_handler() {
     continue_work = FALSE;
 }
 
+//обработка клиента (поточная функция)
 void* handle_client(void* arg) {
     ignore_sigpipe();
 
@@ -774,7 +803,7 @@ void* handle_client(void* arg) {
     while (continue_work == TRUE) {
         int socket = get_item(proxy->thread_poll->queue);
 
-        if (socket != FAILURE) {
+        if (socket >= 0) {
             int pos = find_free_event(mask);
 
             if (pos >= 0) {
@@ -803,7 +832,7 @@ void* handle_client(void* arg) {
 
                 curr_len = 0;
 
-                memset(buf, 0, BUFFER_SIZE);
+                memset((void*)buf, 0, BUFFER_SIZE);
                 refresh_http_message(message);
             } else {
                 set_free(events[i].data.fd, mask);
@@ -826,6 +855,7 @@ void* handle_client(void* arg) {
     return NULL;
 }
 
+//запуск прокси сервера
 void proxy_start(proxy_t* proxy) {
     ignore_sigpipe();
 
@@ -853,13 +883,13 @@ void proxy_start(proxy_t* proxy) {
     timeout.tv_sec = 5;
     timeout.tv_usec = 0;
 
-    stat = setsockopt(proxy->server_socket, SOL_SOCKET, SO_RCVTIMEO, (char*)&timeout, sizeof(timeout));
+    stat = setsockopt(proxy->server_socket, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
 
     if (stat != EXIT_SUCCESS) {
         fprintf(stderr, "Failed to set socket options: %s\n", strerror(errno));
     }    
 
-    thread_poll_start(proxy->thread_poll, handle_client, args, sizeof(thread_args_t));
+    thread_poll_start(proxy->thread_poll, handle_client, (void*)args, sizeof(thread_args_t));
 
     while (continue_work == TRUE) {
         int new_fd = accept(proxy->server_socket, NULL, NULL);

@@ -6,6 +6,7 @@
 
 #define MAX_HEADERS 40
 
+//обработчик url
 int on_url(http_parser* parser, const char* at, size_t length) {
     http_message_t* message = (http_message_t*)parser->data;
     message->url = (char*)malloc(length + 1);
@@ -20,6 +21,7 @@ int on_url(http_parser* parser, const char* at, size_t length) {
     return EXIT_SUCCESS;
 }
 
+//обработчик имени заголовка
 int on_header_name(http_parser* parser, const char* at, size_t length) {
     http_message_t* message = (http_message_t*)parser->data;
     message->headers[message->headers_count].name = (char*)malloc(length + 1);
@@ -34,6 +36,7 @@ int on_header_name(http_parser* parser, const char* at, size_t length) {
     return EXIT_SUCCESS;
 }
 
+//обработчик значения заголовка
 int on_header_value(http_parser* parser, const char* at, size_t length) {
     http_message_t* message = (http_message_t*)parser->data;
     message->headers[message->headers_count].value = (char*)malloc(length + 1);
@@ -45,13 +48,14 @@ int on_header_value(http_parser* parser, const char* at, size_t length) {
 
     memcpy(message->headers[message->headers_count].value, at, length);
     message->headers[message->headers_count].value[length] = '\0';
-    message->headers_count++;
+    ++(message->headers_count);
     return EXIT_SUCCESS;
 }
 
+//обработчик тела сообщения
 int on_body(http_parser* parser, const char* at, size_t length) {
     http_message_t* message = (http_message_t*)parser->data;
-    message->body = (char*)malloc(length + 1);
+    message->body = (char*)malloc(length);
 
     if (message->body == NULL) {
         fprintf(stderr, "Error allocating memory for body\n");
@@ -62,18 +66,21 @@ int on_body(http_parser* parser, const char* at, size_t length) {
     return EXIT_SUCCESS;
 }
 
+//обработчик статуса
 int on_status(http_parser* parser, const char* at, size_t length) {
     http_message_t* message = (http_message_t*)parser->data;
     message->status = parser->status_code;
     return EXIT_SUCCESS;
 }
 
+//обработчик завершения сообщения
 int on_message_complete(http_parser* parser) {
     http_message_t* message = (http_message_t*)parser->data;
     message->state = READY;
     return EXIT_SUCCESS;
 }
 
+//инициализация парсера
 void init_http_parser(http_parser* parser, http_parser_settings* settings) {
     http_parser_init(parser, HTTP_BOTH);
     http_parser_settings_init(settings);
@@ -85,8 +92,10 @@ void init_http_parser(http_parser* parser, http_parser_settings* settings) {
     settings->on_message_complete = on_message_complete;
 }
 
+//создание http сообщения
 http_message_t* create_http_message() {
     http_message_t* message = (http_message_t*)malloc(sizeof(http_message_t));
+
     if (message == NULL) {
         return NULL;
     }
@@ -112,6 +121,7 @@ http_message_t* create_http_message() {
     return message;
 }
 
+//освобождение памяти, занимаемой http сообщением
 void free_http_message(http_message_t* message) {
     if (message == NULL) {
         return;
@@ -138,6 +148,7 @@ void free_http_message(http_message_t* message) {
     free(message);
 }
 
+//печать http сообщения
 void print_http_message(const http_message_t* message) {
     if (message == NULL) {
         return;
@@ -163,6 +174,7 @@ void print_http_message(const http_message_t* message) {
     printf(" --- END --- \n");
 }
 
+//обновление http сообщения
 void refresh_http_message(http_message_t* message) {
     if (message == NULL) {
         return;

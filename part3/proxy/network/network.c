@@ -17,6 +17,7 @@
 #define LISTEN_COUNT 10
 #define SERVER_IP "127.0.0.1"
 
+//безопасное закрытие сокета
 int safe_close1(int fd) {
     errno = SUCCESS;
     int stat = close(fd);
@@ -29,6 +30,7 @@ int safe_close1(int fd) {
     return SUCCESS;
 }
 
+//игнорирование сигнала SIGPIPE
 void ignore_sigpipe() {
     struct sigaction sa;
     sa.sa_handler = SIG_IGN;
@@ -37,6 +39,7 @@ void ignore_sigpipe() {
     sigaction(SIGPIPE, &sa, NULL);
 }
 
+//инициализация epoll
 int init_epoll() {
     errno = SUCCESS;
     int epoll_fd = epoll_create1(0);
@@ -49,6 +52,7 @@ int init_epoll() {
     return epoll_fd;
 }
 
+//добавление сокета в epoll
 int add_in_epoll(int epoll_fd, int sock_fd, struct epoll_event *event) {
     event->events = EPOLLIN | EPOLLET;
     event->data.fd = sock_fd;
@@ -64,6 +68,7 @@ int add_in_epoll(int epoll_fd, int sock_fd, struct epoll_event *event) {
     return SUCCESS;
 }
 
+//удаление сокета из epoll
 int remove_from_epoll(int epoll_fd, int sock_fd) {
     int stat = epoll_ctl(epoll_fd, EPOLL_CTL_DEL, sock_fd, NULL);
 
@@ -75,13 +80,14 @@ int remove_from_epoll(int epoll_fd, int sock_fd) {
     return SUCCESS;
 }
 
+//отправка сообщения
 int send_message(char* buf, unsigned int len, int sock_fd) {
     int sent = 0;
     int n = 0;
 
     errno = SUCCESS;
 
-    while (sent < len) {
+    while (sent != len) {
         n = send(sock_fd, (const void*)&buf[sent], (len - sent) * sizeof(char), MSG_NOSIGNAL);
 
         if ((n <= 0) && (errno != SUCCESS)) {
@@ -95,6 +101,7 @@ int send_message(char* buf, unsigned int len, int sock_fd) {
     return SUCCESS;
 }
 
+//подключение к серверу по имени хоста
 int connect_to_server(char* host) {
     struct hostent *server = gethostbyname(host);
 
@@ -129,6 +136,7 @@ int connect_to_server(char* host) {
     return sock_fd;
 }
 
+//создание слушающего сокета
 int create_server_socket(int port) {
     errno = SUCCESS;
     int opt = 1;
@@ -169,6 +177,7 @@ int create_server_socket(int port) {
     return sock_fd;
 }
 
+//закрытие соединения
 void close_connection(int sock_fd, int epoll_fd) {
     errno = SUCCESS;
 
@@ -180,7 +189,7 @@ void close_connection(int sock_fd, int epoll_fd) {
 
     stat = close(sock_fd);
 
-    if (stat == FAILURE) {
+    if (stat != SUCCESS) {
         fprintf(stderr, "Error: close failed: %s\n", strerror(errno));
     }
 }

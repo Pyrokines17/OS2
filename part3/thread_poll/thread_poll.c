@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+//безопасное освобождение мьютекса
 int safe_pthread_mutex_unlock(pthread_mutex_t *mutex) {
     int stat = pthread_mutex_unlock(mutex);
     
@@ -16,11 +17,12 @@ int safe_pthread_mutex_unlock(pthread_mutex_t *mutex) {
     return EXIT_SUCCESS;
 }
 
+//логика создание очереди
 qhead_t* create_queue() {
     qhead_t *qhead = (qhead_t *)malloc(sizeof(qhead_t));
     
     if (qhead == NULL) {
-        fprintf(stderr, "Error: malloc failed\n");
+        fprintf(stderr, "Error: malloc failed for create_queue\n");
         return NULL;
     }
     
@@ -30,7 +32,7 @@ qhead_t* create_queue() {
     int stat = pthread_mutex_init(&qhead->lock, NULL);
     
     if (stat != EXIT_SUCCESS) {
-        fprintf(stderr, "Error: pthread_mutex_init failed: %s\n", strerror(stat));
+        fprintf(stderr, "Error: pthread_mutex_init failed for create_queue: %s\n", strerror(stat));
         free(qhead);
         return NULL;
     }
@@ -38,6 +40,7 @@ qhead_t* create_queue() {
     return qhead;
 }
 
+//логика уничтожения очереди
 void destroy_queue(qhead_t* qhead) {
     if (qhead == NULL) {
         return;
@@ -78,16 +81,17 @@ void destroy_queue(qhead_t* qhead) {
     free(qhead);
 }
 
+//ложика извлечения элемента из очереди
 int get_item(qhead_t* qhead) {
     if (qhead == NULL) {
-        return EXIT_FAILURE;
+        return NULL_ERROR;
     }
     
     int stat = pthread_mutex_lock(&qhead->lock);
 
     if (stat != EXIT_SUCCESS) {
         fprintf(stderr, "Error: pthread_mutex_lock failed: %s\n", strerror(stat));
-        return stat;
+        return MUTEX_LOCK_ERROR;
     }
 
     int ret = -1;
@@ -108,7 +112,7 @@ int get_item(qhead_t* qhead) {
 
     if (stat != EXIT_SUCCESS) {
         fprintf(stderr, "Error: pthread_mutex_unlock failed: %s\n", strerror(stat));
-        return EXIT_FAILURE;
+        return MUTEX_UNLOCK_ERROR;
     }
 
     if (item != NULL) {
@@ -118,6 +122,7 @@ int get_item(qhead_t* qhead) {
     return ret;
 }
 
+//логика добавления элемента в очередь
 int add_item(qhead_t* qhead, int fd) {
     if (qhead == NULL) {
         return EXIT_FAILURE;
@@ -133,7 +138,7 @@ int add_item(qhead_t* qhead, int fd) {
     qitem_t *item = (qitem_t *)malloc(sizeof(qitem_t));
     
     if (item == NULL) {
-        fprintf(stderr, "Error: malloc failed\n");
+        fprintf(stderr, "Error: malloc failed for item\n");
         safe_pthread_mutex_unlock(&qhead->lock);
         return EXIT_FAILURE;
     }
@@ -152,18 +157,19 @@ int add_item(qhead_t* qhead, int fd) {
     stat = pthread_mutex_unlock(&qhead->lock);
 
     if (stat != EXIT_SUCCESS) {
-        fprintf(stderr, "Error: pthread_mutex_unlock failed\n");
-        return EXIT_FAILURE;
+        fprintf(stderr, "Error: pthread_mutex_unlock failed: %s\n", strerror(stat));
+        return stat;
     }
     
     return EXIT_SUCCESS;
 }
 
+//логика создания пула потоков
 thread_poll_t *thread_poll_create(unsigned int nthreads) {
     thread_poll_t *tp = (thread_poll_t *)malloc(sizeof(thread_poll_t));
     
     if (tp == NULL) {
-        fprintf(stderr, "Error: malloc failed\n");
+        fprintf(stderr, "Error: malloc failed for thread_poll_create\n");
         return NULL;
     }
     
@@ -171,7 +177,7 @@ thread_poll_t *thread_poll_create(unsigned int nthreads) {
     tp->threads = (pthread_t *)malloc(nthreads * sizeof(pthread_t));
     
     if (tp->threads == NULL) {
-        fprintf(stderr, "Error: malloc failed\n");
+        fprintf(stderr, "Error: malloc failed for threads\n");
         free(tp);
         return NULL;
     }
@@ -192,6 +198,7 @@ thread_poll_t *thread_poll_create(unsigned int nthreads) {
     return tp;
 }
 
+//логика уничтожения пула потоков
 void thread_poll_destroy(thread_poll_t *tp) {
     if (tp == NULL) {
         return;
@@ -216,6 +223,7 @@ void thread_poll_destroy(thread_poll_t *tp) {
     free(tp);
 }
 
+//логика запуска пула потоков
 void thread_poll_start(thread_poll_t *tp, void *(*func)(void *), void *args, size_t args_size) {
     if (tp == NULL) {
         return;
@@ -226,7 +234,6 @@ void thread_poll_start(thread_poll_t *tp, void *(*func)(void *), void *args, siz
         return;
     }
     
-    tp->state = RUNNING;
     int stat;
     
     for (unsigned int i = 0; i < tp->nthreads; ++i) {
@@ -236,4 +243,6 @@ void thread_poll_start(thread_poll_t *tp, void *(*func)(void *), void *args, siz
             fprintf(stderr, "Error: pthread_create failed: %s\n", strerror(stat));
         }
     }
+
+    tp->state = RUNNING;
 }

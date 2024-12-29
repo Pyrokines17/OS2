@@ -8,6 +8,7 @@
 #include <errno.h>
 #include <stdio.h>
 
+//безопасное уничтожение rwlock
 int safe_rwlock_destroy(pthread_rwlock_t *rwlock) {
     int stat = pthread_rwlock_destroy(rwlock);
 
@@ -18,6 +19,7 @@ int safe_rwlock_destroy(pthread_rwlock_t *rwlock) {
     return stat;
 }
 
+//безопасное освобождение rwlock
 int safe_rwlock_unlock(pthread_rwlock_t *rwlock) {
     int stat = pthread_rwlock_unlock(rwlock);
 
@@ -28,6 +30,7 @@ int safe_rwlock_unlock(pthread_rwlock_t *rwlock) {
     return stat;
 }
 
+//безопасное уничтожение mutex
 int safe_mutex_destroy(pthread_mutex_t *mutex) {
     int stat = pthread_mutex_destroy(mutex);
 
@@ -38,6 +41,7 @@ int safe_mutex_destroy(pthread_mutex_t *mutex) {
     return stat;
 }
 
+//безопасное уничтожение cond
 int safe_cond_destroy(pthread_cond_t *cond) {
     int stat = pthread_cond_destroy(cond);
 
@@ -48,26 +52,30 @@ int safe_cond_destroy(pthread_cond_t *cond) {
     return stat;
 }
 
+//сравнение url ресурсов
 int resource_compare(const void *a, const void *b, void *udata) {
     const resource_t *ra = a;
     const resource_t *rb = b;
     return strcmp(ra->url, rb->url);
 }
 
+//итерация по ресурсам
 bool resource_iter(const void *item, void *udata) {
     return true;
 }
 
+//возвращение хэша ресурса
 uint64_t resource_hash(const void *item, uint64_t seed0, uint64_t seed1) {
     const resource_t *r = item;
     return hashmap_sip(r->url, strlen(r->url), seed0, seed1);
 }
 
+//логика создания кэша
 cache_t *cache_create(unsigned int init_size, unsigned int max_size, unsigned int ttl) {
-    cache_t *cache = malloc(sizeof(cache_t));
+    cache_t *cache = (cache_t*)malloc(sizeof(cache_t));
     
     if (cache == NULL) {
-        fprintf(stderr, "Error: malloc failed: %s\n", strerror(errno));
+        fprintf(stderr, "Error: malloc failed for cache_create\n");
         return NULL;
     }
 
@@ -109,7 +117,7 @@ cache_t *cache_create(unsigned int init_size, unsigned int max_size, unsigned in
     cache->cache_page = (char*)malloc(init_size * sizeof(char));
 
     if (cache->cache_page == NULL) {
-        fprintf(stderr, "Error: malloc failed: %s\n", strerror(errno));
+        fprintf(stderr, "Error: malloc failed for cache_page\n");
         safe_rwlock_destroy(&cache->rwlock);
         safe_mutex_destroy(&cache->mutex);
         safe_cond_destroy(&cache->cond);
@@ -124,6 +132,7 @@ cache_t *cache_create(unsigned int init_size, unsigned int max_size, unsigned in
     return cache;
 }
 
+//логика поиска ресурса в кэше
 resource_t *find_resource(cache_t *cache, char *url) {
     int stat = pthread_rwlock_rdlock(&cache->rwlock);
 
@@ -132,7 +141,7 @@ resource_t *find_resource(cache_t *cache, char *url) {
         return NULL;
     }
 
-    resource_t *new_resource = NULL;
+    resource_t *new_resource = NULL; 
     resource_t *resource = (resource_t*)hashmap_get(cache->cache_map, &(resource_t){.url = url});
 
     if (resource == NULL) {
@@ -148,7 +157,7 @@ resource_t *find_resource(cache_t *cache, char *url) {
         new_resource = (resource_t*)malloc(sizeof(resource_t));
 
         if (new_resource == NULL) {
-            fprintf(stderr, "Error: malloc failed: %s\n", strerror(errno));
+            fprintf(stderr, "Error: malloc failed for new_resource\n");
             safe_rwlock_unlock(&cache->rwlock);
             return NULL;
         }
@@ -156,7 +165,7 @@ resource_t *find_resource(cache_t *cache, char *url) {
         char* data = (char*)malloc(resource->size * sizeof(char));
 
         if (data == NULL) {
-            fprintf(stderr, "Error: malloc failed: %s\n", strerror(errno));
+            fprintf(stderr, "Error: malloc failed for data\n");
             free(new_resource);
             safe_rwlock_unlock(&cache->rwlock);
             return NULL;
@@ -185,8 +194,9 @@ resource_t *find_resource(cache_t *cache, char *url) {
     return new_resource;
 }
 
+//логика добавления ресурса в кэш
 void put(cache_t *cache, resource_t *resource) {
-    memcpy(&cache->cache_page[cache->position], resource->data, resource->size * sizeof(char));
+    memcpy(&(cache->cache_page[cache->position]), resource->data, resource->size * sizeof(char));
 
     resource->data = NULL;
     resource->data_position = cache->position;
@@ -203,19 +213,20 @@ void put(cache_t *cache, resource_t *resource) {
     printf("Put resource %s in cache\n", resource->url);
     printf("Resource size: %d, cache remaining: %d\n", resource->size, cache->remaining);
 
-    int stat = pthread_cond_broadcast(&cache->cond);
+    int stat = pthread_cond_broadcast(&(cache->cond));
 
     if (stat != EXIT_SUCCESS) {
         fprintf(stderr, "Error: pthread_cond_broadcast: %s\n", strerror(stat));
     }
 }
 
+//логика удаления ресурса из кэша
 void _delete_resource(cache_t *cache, resource_t *resource) {
     printf("Delete resource %s from cache\n", resource->url);
 
     if (resource->size != 0) {
-        memcpy(&cache->cache_page[resource->data_position],
-        &cache->cache_page[resource->data_position + resource->size],
+        memcpy(&(cache->cache_page[resource->data_position]),
+        &(cache->cache_page[resource->data_position + resource->size]),
         (cache->current_size - resource->size - resource->data_position) * sizeof(char));
         cache->position -= resource->size;
         cache->remaining += resource->size;
@@ -230,6 +241,7 @@ void _delete_resource(cache_t *cache, resource_t *resource) {
     }
 }
 
+//безопасное удаление ресурса из кэша
 void delete_resource(cache_t *cache, resource_t *resource) {
     int stat = pthread_rwlock_wrlock(&cache->rwlock);
 
@@ -247,7 +259,7 @@ void delete_resource(cache_t *cache, resource_t *resource) {
     }
 }
 
-
+//очистка кэша от устаревших ресурсов
 void clear_cache(cache_t *cache) {
     size_t i = 0;
     resource_t *resource;
@@ -259,6 +271,7 @@ void clear_cache(cache_t *cache) {
     }
 }
 
+//логика политики кэширования ресурсов
 void put_resource(cache_t *cache, resource_t *resource) {
     int stat = pthread_rwlock_wrlock(&cache->rwlock);
 
@@ -275,10 +288,10 @@ void put_resource(cache_t *cache, resource_t *resource) {
     if (resource->size <= cache->remaining) {
         printf("Can put resource %s in cache\n", resource->url);
         put(cache, resource);
-    } else if ((resource->size > cache->remaining) && (resource->size < cache->max_size)) {
+    } else if ((resource->size > cache->remaining) && (cache->current_size < cache->max_size)) {
         errno = EXIT_SUCCESS;
 
-        cache->cache_page = (char*)realloc(cache->cache_page, cache->max_size * sizeof(char));
+        cache->cache_page = (char*)realloc(cache->cache_page, cache->max_size);
         cache->remaining += cache->max_size - cache->current_size;
         cache->current_size = cache->max_size;
 
@@ -290,9 +303,9 @@ void put_resource(cache_t *cache, resource_t *resource) {
 
         put(cache, resource);
     } else {
-        printf("clear cache that pur resource, remainig %d, size %d\n", cache->remaining, resource->size);
+        printf("Clear cache that pur resource, remainig %d, size %d\n", cache->remaining, resource->size);
 
-        while (cache->remaining < resource->size){
+        while (cache->remaining < resource->size) {
             clear_cache(cache);
         }
 
@@ -306,6 +319,7 @@ void put_resource(cache_t *cache, resource_t *resource) {
     }
 }
 
+//логика уничтожения кэша
 void cache_destroy(cache_t *cache) {
     int stat = pthread_rwlock_wrlock(&cache->rwlock);
 
@@ -338,14 +352,8 @@ void cache_destroy(cache_t *cache) {
     free(cache);
 }
 
+//логика добавления неготового ресурса в кэш
 void set_resource_in_progress(cache_t *cache, char *url) {
-    int stat = pthread_rwlock_wrlock(&cache->rwlock);
-
-    if (stat != EXIT_SUCCESS) {
-        fprintf(stderr, "Error: pthread_rwlock_wrlock: %s\n", strerror(stat));
-        return;
-    }
-
     resource_t *resource = find_resource(cache, url);
 
     if ((resource != NULL) && (resource->state == DONE)) {
@@ -353,10 +361,4 @@ void set_resource_in_progress(cache_t *cache, char *url) {
     }
     
     hashmap_set(cache->cache_map, &(resource_t){.url = url, .state = IN_PROGRESS, .size = 0, .data_position = -1});
-
-    stat = pthread_rwlock_unlock(&cache->rwlock);
-
-    if (stat != EXIT_SUCCESS) {
-        fprintf(stderr, "Error: pthread_rwlock_unlock: %s\n", strerror(stat));
-    }
 }

@@ -3,11 +3,13 @@
 #define READY 1
 #define NOT_READY 0
 
+// структура заголовка http сообщения
 typedef struct header_t {
     char* name;
     char* value;
 } header_t;
 
+//структура http сообщения
 typedef struct http_message_t {
     unsigned int method;
     char* url;

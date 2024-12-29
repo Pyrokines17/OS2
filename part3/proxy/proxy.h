@@ -7,9 +7,9 @@
 
 #define DEF_THREADS 4
 #define DEF_CACHE_INIT_SIZE 1024*1024
-#define DEF_CACHE_MAX_SIZE 10*1024*1024
+#define DEF_CACHE_MAX_SIZE 400*1024*1024
 #define DEF_PORT 9000
-#define DEF_CACHE_TTL 5
+#define DEF_CACHE_TTL 20
 
 #define BUFFER_SIZE 4096 * 20
 #define AMOUNT_EVENTS 1024
@@ -24,6 +24,7 @@
 #define BAD_GATEWAY -3
 #define TIMEOUT -4
 
+//структура прокси сервера
 typedef struct proxy_t {
     thread_poll_t *thread_poll;
     int server_socket;
