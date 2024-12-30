@@ -139,11 +139,6 @@ void *writer(void *arg) {
 			return NULL;
 		}
 
-        if (ok != FALSE && ok != TRUE) {
-            fprintf(stderr, "writer: queue_add() failed: %s\n", strerror(ok));
-            return NULL;
-        }
-
 		if (ok == FALSE) {
 			continue;
 		}

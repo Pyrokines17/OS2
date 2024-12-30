@@ -6,3 +6,5 @@ long futex(uint32_t *uaddr, int futex_op, uint32_t val, const struct timespec *t
 и если другой поток выполнил операцию FUTEX_WAKE (или аналогичное пробуждение) 
 после изменения значения и до этой операции FUTEX_WAIT, 
 то вызывающий поток заметит изменение значения и не начнет спать.
+
+при explicit задаются явные memory_order при успехе или неудаче
