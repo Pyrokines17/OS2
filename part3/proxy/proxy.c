@@ -545,12 +545,6 @@ int get_response(
         }
 
         if ((answer > 0) && (buf != NULL)) {
-            resource_t resource;
-            resource.url = url;
-            resource.data = buf;
-            resource.size = answer;
-            resource.state = READY;
-            put_resource(cache, &resource);
             free(buf);
             return SUCCESS;
         } else if (answer == REDIRECT) {
@@ -645,7 +639,7 @@ int handle_client_message (
         int answer = SUCCESS;
 
         if (message->method == HTTP_GET) {
-            resource_t* resource = find_resource(cache, message->url);
+            resource_t* resource = NULL;
 
             if ((resource != NULL) && (resource->state == READY)) {
                 printf("Resource %s found in cache\n", message->url);
@@ -716,7 +710,7 @@ int read_message(
             answer = handle_client_message(parser, settings, message, socket, cache);
 
             if (answer == IN_PROGRESS) {
-                resource_t* resource = wait_response(cache, message->url);
+                resource_t* resource = NULL;
 
                 if ((resource != NULL) && (resource->state == READY)) {
                     int stat = send_message(resource->data, resource->size, socket);
