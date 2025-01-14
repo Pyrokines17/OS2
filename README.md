@@ -1,1 +1,1 @@
-# Repository for OS (part 2)
+# Repository for OS labs (part 2)
